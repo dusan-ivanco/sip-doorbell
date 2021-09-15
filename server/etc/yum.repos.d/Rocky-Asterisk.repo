@@ -1,0 +1,6 @@
+[Asterisk]
+name=Rocky Linux $releasever - Asterisk
+baseurl=https://ast.tucny.com/repo/asterisk-18/el$releasever/$basearch/
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-asterisk
+gpgcheck=1
+enabled=1
