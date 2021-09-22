@@ -41,7 +41,7 @@ class sipDoorbell extends HTMLElement {
     };
 
     (() => {
-      let child = new MutationObserver((m) => {
+      const child = new MutationObserver((m) => {
         m.forEach((l) => {
           l.addedNodes.forEach((e) => {
             if(e.nodeName === 'HA-CARD') {
@@ -51,7 +51,7 @@ class sipDoorbell extends HTMLElement {
         });
       });
 
-      let focus = new IntersectionObserver((i) => {
+      const focus = new IntersectionObserver((i) => {
         i.forEach((e) => {
           if(e.isIntersecting) {
             this.stretch();
@@ -69,6 +69,12 @@ class sipDoorbell extends HTMLElement {
 
       window.addEventListener('resize', () => this.stretch());
       window.addEventListener('orientationchange', () => this.stretch());
+
+      window.addEventListener('beforeunload', () => {
+        if(window.sipDoorbell[this.config.worker]) {
+          window.sipDoorbell[this.config.worker].stop();
+        }
+      });
     })();
   }
 
@@ -143,19 +149,6 @@ class sipDoorbell extends HTMLElement {
   content() {
     this.shadowRoot.innerHTML = `
       <style>
-        ha-card {
-          min-width: 320px;
-          min-height: 240px;
-
-          width: 100%;
-          height: 100%;
-          background: ${this.config.assets.poster.canvas};
-
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
         ha-icon {
           margin: 30px;
           padding: 15px;
@@ -182,23 +175,23 @@ class sipDoorbell extends HTMLElement {
           box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
         }
 
-        #field {
-          width: 0;
-          height: 0;
-          position: relative;
-        }
+        #basis {
+          min-width: 320px;
+          min-height: 240px;
 
-        #panel {
-          left: 0;
-          right: 0;
-          bottom: 0;
-          position: absolute;
-        }
+          width: 100%;
+          height: 100%;
+          background: ${this.config.assets.poster.canvas};
 
-        #panel span {
           display: flex;
           align-items: center;
           justify-content: center;
+        }
+
+        #arena {
+          width: 0;
+          height: 0;
+          position: relative;
         }
 
         #video {
@@ -213,6 +206,19 @@ class sipDoorbell extends HTMLElement {
           height: 100%;
           display: block;
           object-fit: contain;
+        }
+
+        #panel {
+          left: 0;
+          right: 0;
+          bottom: 0;
+          position: absolute;
+        }
+
+        #panel span {
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
 
         [data-key="callup"] {
@@ -233,8 +239,8 @@ class sipDoorbell extends HTMLElement {
         ${this.config.access.map((d) => `[data-key="${d.key}"] {display: none; background: green;}`).join('')}
       </style>
 
-      <ha-card>
-        <div id="field">
+      <ha-card id="basis">
+        <div id="arena">
           <audio id="audio" autoplay playsinline></audio>
           <video id="video" autoplay playsinline></video>
           <img id="image">
@@ -264,14 +270,41 @@ class sipDoorbell extends HTMLElement {
 
     if(window.sipDoorbell[this.config.worker]) {
       window.sipDoorbell[this.config.worker].on('newRTCSession', (rtc) => {
-        let stream = {
+        const handle = {
+          basis:this.element('#basis'),
           audio:this.element('#audio'),
           video:this.element('#video'),
           image:this.element('#image')
         };
 
+        const active = () => {
+          if(this.config.camera.entity) {
+            handle.image.src = '/api/camera_proxy_stream/' + this.config.camera.entity + '?token=' + this.config.camera.secret;
+
+            handle.video.setAttribute('style', 'display: none;');
+            handle.image.setAttribute('style', 'display: block;');
+          } else {
+            handle.video.setAttribute('style', 'display: block;');
+            handle.image.setAttribute('style', 'display: none;');
+          }
+
+          handle.basis.setAttribute('style', 'background: var(--ha-card-background, var(--card-background-color, white));');
+        };
+
+        const stream = (c) => {
+          c.ontrack = (e) => {
+            if(e.track.kind === 'audio') {
+              handle.audio.srcObject = e.streams[0];
+            }
+
+            if(e.track.kind === 'video') {
+              handle.video.srcObject = e.streams[0];
+            }
+          };
+        };
+
         if(rtc.session.direction === 'incoming') {
-          console.info('%cIncoming call:' + ' ' + rtc.session.remote_identity, 'color: blue;');
+          console.info('%cIncoming call acquired:' + ' ' + rtc.session.remote_identity, 'color: blue;');
           this.caution('notice-pickup-play');
           this.incoming_call_accepted = false;
 
@@ -282,54 +315,16 @@ class sipDoorbell extends HTMLElement {
 
           rtc.session.on('accepted', () => {
             if(this.incoming_call_accepted !== null) {
-              console.info('%cIncoming call accepted', 'color: yellow;');
+              console.info('%cIncoming call accepted:' + ' ' + rtc.session.remote_identity, 'color: yellow;');
               this.caution('notice-pickup-stop');
               this.incoming_call_accepted = true;
+              active();
 
               this.element('[data-key="callup"]').setAttribute('style', 'display: none;');
               this.element('[data-key="pickup"]').setAttribute('style', 'display: none;');
               this.element('[data-key="hangup"]').setAttribute('style', 'display: initial;');
               this.config.access.forEach((d) => this.element('[data-key="' + d.key + '"]').setAttribute('style', 'display: initial;'));
-
-              if(this.config.camera.entity) {
-                stream.image.src = '/api/camera_proxy_stream/' + this.config.camera.entity + '?token=' + this.config.camera.secret;
-
-                stream.video.setAttribute('style', 'display: none;');
-                stream.image.setAttribute('style', 'display: block;');
-              } else {
-                stream.video.setAttribute('style', 'display: block;');
-                stream.image.setAttribute('style', 'display: none;');
-              }
-
-              this.element('ha-card').setAttribute('style', 'background: var(--ha-card-background, var(--card-background-color, white));');
             }
-          });
-
-          rtc.session.on('failed', (e) => {
-            console.info('%cIncoming call failed:' + ' ' + e.cause, 'color: red;');
-            this.caution('notice-pickup-stop');
-            this.cleanup();
-          });
-
-          rtc.session.on('ended', (e) => {
-            console.info('%cIncoming call ended:' + ' ' + e.cause, 'color: red;');
-            this.caution('notice-pickup-stop');
-            this.cleanup();
-          });
-
-          rtc.session.on('peerconnection', () => {
-            rtc.session.connection.ontrack = (e) => {
-              switch(e.track.kind) {
-                case 'audio': {
-                  stream.audio.srcObject = e.streams[0];
-                  break;
-                }
-                case 'video': {
-                  stream.video.srcObject = e.streams[0];
-                  break;
-                }
-              }
-            };
           });
 
           this.element('[data-key="pickup"]').addEventListener('click', () => {
@@ -349,19 +344,10 @@ class sipDoorbell extends HTMLElement {
               rtc.session.answer(this.config.server.opt);
             }
           });
-
-          this.config.access.forEach((d) => {
-            this.element('[data-key="' + d.key + '"]').addEventListener('click', () => {
-              rtc.session.sendDTMF(d.key, {
-                duration:250,
-                interToneGap:500
-              });
-            });
-          });
         }
 
         if(rtc.session.direction === 'outgoing') {
-          console.info('%cOutgoing call:' + ' ' + rtc.session.remote_identity, 'color: blue;');
+          console.info('%cOutgoing call proffered:' + ' ' + rtc.session.remote_identity, 'color: blue;');
           this.caution('notice-callup-play');
           this.outgoing_call_confirmed = false;
 
@@ -372,67 +358,51 @@ class sipDoorbell extends HTMLElement {
 
           rtc.session.on('confirmed', () => {
             if(this.outgoing_call_confirmed !== null) {
-              console.info('%cOutgoing call confirmed', 'color: yellow;');
+              console.info('%cOutgoing call confirmed:' + ' ' + rtc.session.remote_identity, 'color: yellow;');
               this.caution('notice-callup-stop');
               this.outgoing_call_confirmed = true;
+              active();
 
               this.element('[data-key="callup"]').setAttribute('style', 'display: none;');
               this.element('[data-key="pickup"]').setAttribute('style', 'display: none;');
               this.element('[data-key="hangup"]').setAttribute('style', 'display: initial;');
               this.config.access.forEach((d) => this.element('[data-key="' + d.key + '"]').setAttribute('style', 'display: initial;'));
-
-              if(this.config.camera.entity) {
-                stream.image.src = '/api/camera_proxy_stream/' + this.config.camera.entity + '?token=' + this.config.camera.secret;
-
-                stream.video.setAttribute('style', 'display: none;');
-                stream.image.setAttribute('style', 'display: block;');
-              } else {
-                stream.video.setAttribute('style', 'display: block;');
-                stream.image.setAttribute('style', 'display: none;');
-              }
-
-              this.element('ha-card').setAttribute('style', 'background: var(--ha-card-background, var(--card-background-color, white));');
             }
           });
-
-          rtc.session.on('failed', (e) => {
-            console.info('%cOutgoing call failed:' + ' ' + e.cause, 'color: red;');
-            this.caution('notice-callup-stop');
-            this.cleanup();
-          });
-
-          rtc.session.on('ended', (e) => {
-            console.info('%cOutgoing call ended:' + ' ' + e.cause, 'color: red;');
-            this.caution('notice-callup-stop');
-            this.cleanup();
-          });
-
-          rtc.session.connection.ontrack = (e) => {
-            switch(e.track.kind) {
-              case 'audio': {
-                stream.audio.srcObject = e.streams[0];
-                break;
-              }
-              case 'video': {
-                stream.video.srcObject = e.streams[0];
-                break;
-              }
-            }
-          };
 
           this.element('[data-key="hangup"]').addEventListener('click', () => {
             rtc.session.terminate();
           });
+        }
 
-          this.config.access.forEach((d) => {
-            this.element('[data-key="' + d.key + '"]').addEventListener('click', () => {
-              rtc.session.sendDTMF(d.key, {
-                duration:250,
-                interToneGap:500
-              });
+        if(!rtc.session.connection) {
+          rtc.session.on('peerconnection', () => {
+            stream(rtc.session.connection);
+          });
+        } else {
+          stream(rtc.session.connection);
+        }
+
+        rtc.session.on('failed', (e) => {
+          console.info('%cCall session failed:' + ' ' + e.cause, 'color: red;');
+          this.caution('notice-callup-stop');
+          this.cleanup();
+        });
+
+        rtc.session.on('ended', (e) => {
+          console.info('%cCall session ended:' + ' ' + e.cause, 'color: red;');
+          this.caution('notice-callup-stop');
+          this.cleanup();
+        });
+
+        this.config.access.forEach((d) => {
+          this.element('[data-key="' + d.key + '"]').addEventListener('click', () => {
+            rtc.session.sendDTMF(d.key, {
+              duration:250,
+              interToneGap:500
             });
           });
-        }
+        });
       });
 
       window.sipDoorbell[this.config.worker].on('registered', () => {
@@ -461,7 +431,7 @@ class sipDoorbell extends HTMLElement {
     this.factory('[data-key="hangup"]');
     this.config.access.forEach((d) => this.factory('[data-key="' + d.key + '"]'));
 
-    this.element('ha-card').removeAttribute('style');
+    this.element('#basis').removeAttribute('style');
     this.element('#video').removeAttribute('style');
     this.element('#image').removeAttribute('style');
 
@@ -473,7 +443,7 @@ class sipDoorbell extends HTMLElement {
   }
 
   caution(t) {
-    let play = (e) => {
+    const play = (e) => {
       if(e.paused) {
         e.currentTime = 0;
         e.loop = true;
@@ -481,7 +451,7 @@ class sipDoorbell extends HTMLElement {
       }
     };
 
-    let stop = (e) => {
+    const stop = (e) => {
       if(!e.paused) {
         e.pause();
       }
@@ -511,23 +481,22 @@ class sipDoorbell extends HTMLElement {
   }
 
   factory(e) {
-    let o = this.element(e);
-    let n = o.cloneNode(true);
+    const o = this.element(e);
+    const n = o.cloneNode(true);
 
     n.removeAttribute('style');
     o.parentNode.replaceChild(n, o);
   }
 
   stretch() {
-    try {
-      let s = this.element('ha-card');
-      let e = this.element('#field');
-      let d = s.getBoundingClientRect();
+    const b = this.element('#basis');
+    const a = this.element('#arena');
 
-      e.style.width = Math.max(0, (d.left > 0) ? Math.min(d.width, (window.innerWidth - d.left)) : Math.min(d.right, window.innerWidth)) + 'px';
-      e.style.height = Math.max(0, (d.top > 0) ? Math.min(d.height, (window.innerHeight - d.top)) : Math.min(d.bottom, window.innerHeight)) + 'px';
-    } catch(e) {
-      //continue
+    if(b && a) {
+      const d = b.getBoundingClientRect();
+
+      a.style.width = Math.max(0, (d.left > 0) ? Math.min(d.width, (window.innerWidth - d.left)) : Math.min(d.right, window.innerWidth)) + 'px';
+      a.style.height = Math.max(0, (d.top > 0) ? Math.min(d.height, (window.innerHeight - d.top)) : Math.min(d.bottom, window.innerHeight)) + 'px';
     }
   }
 
@@ -555,7 +524,7 @@ class sipDoorbellEditor extends HTMLElement {
     window.sipDoorbellEditor = (k, v) => {
       eval('this.config' + '.' + k + '=' + '"' + v + '"');
 
-      let d = new CustomEvent('config-changed', {
+      const d = new CustomEvent('config-changed', {
         bubbles:true,
         composed:true,
         detail:{
