@@ -66,16 +66,16 @@ class sipDoorbell extends HTMLElement {
         childList:true,
         subtree:false
       });
-
-      window.addEventListener('resize', () => this.stretch());
-      window.addEventListener('orientationchange', () => this.stretch());
-
-      window.addEventListener('beforeunload', () => {
-        if(window.sipDoorbell[this.config.worker]) {
-          window.sipDoorbell[this.config.worker].stop();
-        }
-      });
     })();
+
+    window.addEventListener('resize', () => this.stretch());
+    window.addEventListener('orientationchange', () => this.stretch());
+
+    window.addEventListener('beforeunload', () => {
+      if(window.sipDoorbell[this.config.worker]) {
+        window.sipDoorbell[this.config.worker].stop();
+      }
+    });
   }
 
   getCardSize() {
@@ -137,6 +137,15 @@ class sipDoorbell extends HTMLElement {
         this.startup.control = true;
         this.control();
       }
+    });
+
+    navigator.mediaDevices.getUserMedia({
+      audio:true,
+      video:true
+    }).then((e) => {
+      e.getTracks().forEach((t) => t.stop());
+    }).catch(() => {
+      throw new Error('SIP Doorbel require audio/video permission');
     });
   }
 
