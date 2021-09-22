@@ -1,0 +1,10 @@
+#!/bin/bash
+
+while read -e ARG && test -n "${ARG}"; do
+  key="$(echo "${ARG%%:*}" | xargs)"
+  val="$(echo "${ARG#*:}" | xargs)"
+  export ${key}="${val}"
+done
+
+#${agi_callerid}
+#${agi_extension}
