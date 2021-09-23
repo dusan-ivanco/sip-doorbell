@@ -66,10 +66,11 @@ class sipDoorbell extends HTMLElement {
         childList:true,
         subtree:false
       });
-    })();
 
-    window.addEventListener('resize', () => this.stretch());
-    window.addEventListener('orientationchange', () => this.stretch());
+      ['orientationchange', 'resize'].forEach((e) => {
+        window.addEventListener(e, () => this.stretch());
+      });
+    })();
 
     window.addEventListener('beforeunload', () => {
       if(window.sipDoorbell[this.config.worker]) {
@@ -384,22 +385,20 @@ class sipDoorbell extends HTMLElement {
           });
         }
 
-        if(!rtc.session.connection) {
-          rtc.session.on('peerconnection', () => {
-            stream(rtc.session.connection);
-          });
-        } else {
+        if(rtc.session.connection) {
           stream(rtc.session.connection);
+        } else {
+          rtc.session.on('peerconnection', () => stream(rtc.session.connection));
         }
 
-        rtc.session.on('failed', (e) => {
-          console.info('%cCall session failed:' + ' ' + e.cause, 'color: red;');
+        rtc.session.on('ended', (e) => {
+          console.info('%cCall session ended:' + ' ' + e.cause, 'color: red;');
           this.caution('notice-callup-stop');
           this.cleanup();
         });
 
-        rtc.session.on('ended', (e) => {
-          console.info('%cCall session ended:' + ' ' + e.cause, 'color: red;');
+        rtc.session.on('failed', (e) => {
+          console.info('%cCall session failed:' + ' ' + e.cause, 'color: red;');
           this.caution('notice-callup-stop');
           this.cleanup();
         });
