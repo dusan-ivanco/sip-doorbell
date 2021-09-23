@@ -159,11 +159,11 @@ class sipDoorbell extends HTMLElement {
   content() {
     this.shadowRoot.innerHTML = `
       <style>
-        .cover-filter-white {
+        .cover-primary {
           filter: invert(99%) sepia(1%) saturate(3359%) hue-rotate(154deg) brightness(119%) contrast(100%);        
         }
 
-        .cover-filter-red {
+        .cover-danger {
           filter: invert(13%) sepia(96%) saturate(7308%) hue-rotate(7deg) brightness(107%) contrast(117%);
         }
 
@@ -273,7 +273,7 @@ class sipDoorbell extends HTMLElement {
 
       <ha-card id="basis">
         <div id="arena">
-          <img id="cover" class="cover-filter-white" src="${this.config.assets.poster.source}">
+          <img id="cover" class="cover-primary" src="${this.config.assets.poster.source}">
           <audio id="audio" autoplay playsinline></audio>
           <video id="video" autoplay playsinline></video>
           <img id="scene">
@@ -443,17 +443,17 @@ class sipDoorbell extends HTMLElement {
 
       window.sipDoorbell[this.config.worker].on('registered', () => {
         console.info('%cSIP-DOORBELL ' + this.version + ' IS INSTALLED', 'color: green; font-weight: bold;');
-        this.element('#cover').setAttribute('class', 'cover-filter-white');
+        this.element('#cover').setAttribute('class', 'cover-primary');
       });
 
       window.sipDoorbell[this.config.worker].on('unregistered', () => {
         console.info('%cSIP-DOORBELL ' + this.version + ' IS UNINSTALLED', 'color: yellow; font-weight: bold;');
-        this.element('#cover').setAttribute('class', 'cover-filter-red');
+        this.element('#cover').setAttribute('class', 'cover-danger');
       });
 
       window.sipDoorbell[this.config.worker].on('registrationFailed', () => {
         console.info('%cSIP-DOORBELL ' + this.version + ' INSTALLATION FAILED', 'color: red; font-weight: bold;');
-        this.element('#cover').setAttribute('class', 'cover-filter-red');
+        this.element('#cover').setAttribute('class', 'cover-danger');
       });
 
       window.sipDoorbell[this.config.worker].start();
