@@ -19,7 +19,7 @@
  * remote: 999@sip.domain.tld
  */
 
-import '/local/vendor/jssip.js';
+import '/hassio/vendor/jssip.js';
 
 window.customCards = window.customCards || [];
 window.customCards.push({
@@ -98,32 +98,32 @@ class sipDoorbell extends HTMLElement {
     this.config = {
       assets:{
         poster:{
-          canvas:config.assets?.poster?.canvas ? config.assets?.poster?.canvas : assets.poster.canvas,
-          source:config.assets?.poster?.source ? config.assets?.poster?.source : assets.poster.source
+          canvas:config?.assets?.poster?.canvas ? config?.assets?.poster?.canvas : assets.poster.canvas,
+          source:config?.assets?.poster?.source ? config?.assets?.poster?.source : assets.poster.source
         },
         notice:{
-          callup:new Audio(config.assets?.notice?.callup ? config.assets?.notice?.callup : assets.notice.callup),
-          pickup:new Audio(config.assets?.notice?.pickup ? config.assets?.notice?.pickup : assets.notice.pickup)
+          callup:new Audio(config?.assets?.notice?.callup ? config?.assets?.notice?.callup : assets.notice.callup),
+          pickup:new Audio(config?.assets?.notice?.pickup ? config?.assets?.notice?.pickup : assets.notice.pickup)
         }
       },
       server:{
-        sip:config.server?.sip ? config.server?.sip : {},
+        sip:config?.server?.sip ? config?.server?.sip : {},
         opt:{
           mediaConstraints:{
             audio:true,
             video:true
           },
           pcConfig:{
-            iceServers:config.server?.ice ? config.server?.ice : []
+            iceServers:config?.server?.ice ? config?.server?.ice : []
           }
         }
       },
-      access:config.access ? config.access : [],
+      access:config?.access ? config?.access : [],
       camera:{
-        entity:config.camera ? config.camera : '',
+        entity:config?.camera ? config?.camera : '',
         secret:''
       },
-      remote:config.remote ? config.remote : ''
+      remote:config?.remote ? config?.remote : ''
     };
 
     crypto.subtle.digest('SHA-1', new TextEncoder().encode(JSON.stringify(this.config.server.sip))).then((b) => {
@@ -151,8 +151,18 @@ class sipDoorbell extends HTMLElement {
   }
 
   set hass(hass) {
-    if(this.config.camera.entity) {
-      this.config.camera.secret = hass.states[this.config.camera.entity].attributes['access_token'];
+    this.localHass = hass;
+
+    try {
+      if(this.config.camera.entity) {
+        const states = this.localHass.states[this.config.camera.entity];
+
+        if(states && states.attributes.access_token) {
+          this.config.camera.secret = states.attributes.access_token;
+        }
+      }
+    } catch(e) {
+      //continue
     }
   }
 
@@ -160,7 +170,7 @@ class sipDoorbell extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <style>
         .cover-primary {
-          filter: invert(99%) sepia(1%) saturate(3359%) hue-rotate(154deg) brightness(119%) contrast(100%);        
+          filter: invert(99%) sepia(1%) saturate(3359%) hue-rotate(154deg) brightness(119%) contrast(100%);
         }
 
         .cover-danger {
@@ -312,7 +322,7 @@ class sipDoorbell extends HTMLElement {
         };
 
         const active = () => {
-          if(this.config.camera.entity) {
+          if(this.config.camera.entity && this.config.camera.secret) {
             handle.scene.src = '/api/camera_proxy_stream/' + this.config.camera.entity + '?token=' + this.config.camera.secret;
 
             handle.cover.setAttribute('style', 'display: none;');
@@ -517,18 +527,6 @@ class sipDoorbell extends HTMLElement {
     }
   }
 
-  element(e) {
-    return this.shadowRoot.querySelector(e);
-  }
-
-  factory(e) {
-    const o = this.element(e);
-    const n = o.cloneNode(true);
-
-    n.removeAttribute('style');
-    o.parentNode.replaceChild(n, o);
-  }
-
   stretch() {
     const b = this.element('#basis');
     const a = this.element('#arena');
@@ -539,6 +537,18 @@ class sipDoorbell extends HTMLElement {
       a.style.width = Math.max(0, (d.left > 0) ? Math.min(d.width, (window.innerWidth - d.left)) : Math.min(d.right, window.innerWidth)) + 'px';
       a.style.height = Math.max(0, (d.top > 0) ? Math.min(d.height, (window.innerHeight - d.top)) : Math.min(d.bottom, window.innerHeight)) + 'px';
     }
+  }
+
+  element(e) {
+    return this.shadowRoot.querySelector(e);
+  }
+
+  factory(e) {
+    const o = this.element(e);
+    const n = o.cloneNode(true);
+
+    n.removeAttribute('style');
+    o.parentNode.replaceChild(n, o);
   }
 
   static getConfigElement() {

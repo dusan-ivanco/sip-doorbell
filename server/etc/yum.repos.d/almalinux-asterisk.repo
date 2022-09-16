@@ -1,0 +1,7 @@
+[Asterisk]
+name=AlmaLinux $releasever - Asterisk
+baseurl=https://ast.tucny.com/repo/asterisk-18/el$releasever/$basearch/
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-asterisk
+gpgcheck=1
+priority=10
+enabled=1

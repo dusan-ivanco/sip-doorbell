@@ -1,0 +1,39 @@
+#!/bin/bash
+
+while read -e ARG && test -n "${ARG}"; do
+  key="$(echo "${ARG%%:*}" | xargs)"
+  val="$(echo "${ARG#*:}" | xargs)"
+  export ${key}="${val}"
+done
+
+function push {
+  curl \
+    -H "Content-Type:application/json" \
+    -X "POST" \
+    -d "$1" \
+    -m "15" \
+    -o "/dev/null" \
+    -w "%{http_code}" \
+    -k https://portal.domain.tld/asterisk/push -s 2>/dev/null
+}
+
+function bond {
+  curl \
+    --get \
+    --data-urlencode "payload=$1" \
+    -m "15" \
+    -o "/dev/null" \
+    -w "%{http_code}" \
+    -k https://portal.domain.tld/asterisk/push -s 2>/dev/null
+}
+
+uuid="$(uuidgen --random)"
+echo "SET VARIABLE CALLKEEP \"${uuid}\""
+
+if [[ $(push "{\"${agi_extension}\":{\"uuid\":\"${uuid}\",\"from\":\"${agi_callerid}\",\"name\":\"${agi_calleridname}\"}}") -ne 200 ]]; then
+  echo "HANGUP"
+fi
+
+if [[ $(bond "{\"uuid\":\"${uuid}\"}") -ne 200 ]]; then
+  echo "HANGUP"
+fi
