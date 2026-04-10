@@ -19,38 +19,6 @@ class sipDoorbell extends HTMLElement {
       control:false
     };
 
-    (() => {
-      const child = new MutationObserver((m) => {
-        m.forEach((l) => {
-          l.addedNodes.forEach((e) => {
-            if(e.nodeName === 'HA-CARD') {
-              focus.observe(e);
-            }
-          });
-        });
-      });
-
-      const focus = new IntersectionObserver((i) => {
-        i.forEach((e) => {
-          if(e.isIntersecting) {
-            this.stretch();
-          }
-        });
-      }, {
-        root:this.shadowRoot.activeElement
-      });
-
-      child.observe(this.shadowRoot, {
-        attributes:false,
-        childList:true,
-        subtree:false
-      });
-
-      ['orientationchange', 'resize'].forEach((e) => {
-        window.addEventListener(e, () => this.stretch());
-      });
-    })();
-
     window.addEventListener('beforeunload', () => {
       if(window.sipDoorbell[this.config.worker]) {
         window.sipDoorbell[this.config.worker].stop();
@@ -128,6 +96,14 @@ class sipDoorbell extends HTMLElement {
   content() {
     this.shadowRoot.innerHTML = `
       <style>
+        ha-camera-stream {
+          width: inherit;
+          height: inherit;
+
+          --video-max-width: calc(100%);
+          --video-max-height: calc(100vh - var(--header-height));
+        }
+
         ha-icon {
           margin: 30px;
           padding: 15px;
@@ -154,12 +130,9 @@ class sipDoorbell extends HTMLElement {
           box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
         }
 
-        #basis {
-          min-width: 320px;
-          min-height: 240px;
-
-          width: 100%;
-          height: 100%;
+        #arena {
+          width: calc(100%);
+          height: calc(100vh - var(--header-height));
 
           display: flex;
           align-items: center;
@@ -169,31 +142,26 @@ class sipDoorbell extends HTMLElement {
           transition: background 0.5s ease;
         }
 
-        #arena {
-          width: 0;
-          height: 0;
-          position: relative;
-        }
-
         #audio {
-          width: 0;
-          height: 0;
           display: none;
-          object-fit: contain;
         }
 
         #video {
           width: 100%;
           height: 100%;
+
           display: none;
-          object-fit: contain;
+          align-items: center;
+          justify-content: center;
         }
 
         #scene {
           width: 100%;
           height: 100%;
-          display: block;
-          object-fit: contain;
+
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
 
         #panel {
@@ -209,21 +177,21 @@ class sipDoorbell extends HTMLElement {
           justify-content: space-evenly;
         }
 
-        [data-key="pickup"] {
-          display: none;
-          background: green;
+        #audio audio {
+          width: inherit;
+          height: inherit;
         }
 
-        [data-key="hangup"] {
-          display: none;
-          background: red;
+        #video video {
+          width: inherit;
+          height: inherit;
         }
 
-        #basis.loading {
+        #arena.loading {
           background: black;
         }
 
-        #basis:not(.loading) #hello {
+        #arena:not(.loading) #hello {
           display: none;
         }
 
@@ -248,22 +216,31 @@ class sipDoorbell extends HTMLElement {
           100% { transform: translate(-50%, -50%) rotate(360deg); }
         }
 
-        ${this.config.access.map((d, i) => `[data-key="C${i}"] {display: none; background: green;}`).join('')}
+        [data-key="pickup"] {
+          display: none;
+          background: green;
+        }
+
+        [data-key="hangup"] {
+          display: none;
+          background: red;
+        }
+
+        ${this.config.access.map((d, i) => `[data-key="C${i}"] {display: none; background: blue;}`).join('')}
       </style>
 
-      <ha-card id="basis" class="loading">
-        <div id="arena">
-          <div id="hello"></div>
-          <div id="scene"></div>
-          <audio id="audio" autoplay playsinline></audio>
-          <video id="video" autoplay playsinline></video>
-          <div id="panel">
-            <span>
-              ${this.config.access.map((d, i) => `<ha-icon data-key="C${i}" icon="${d.icon}"></ha-icon>`).join('')}
-              <ha-icon data-key="pickup" icon="mdi:phone"></ha-icon>
-              <ha-icon data-key="hangup" icon="mdi:phone-hangup"></ha-icon>
-            </span>
-          </div>
+      <ha-card id="arena" class="loading">
+        <div id="hello"></div>
+        <div id="audio"><audio autoplay playsinline></audio></div>
+        <div id="video"><video autoplay playsinline></video></div>
+        <div id="scene"></div>
+
+        <div id="panel">
+          <span>
+            ${this.config.access.map((d, i) => `<ha-icon data-key="C${i}" icon="${d.icon}"></ha-icon>`).join('')}
+            <ha-icon data-key="pickup" icon="mdi:phone"></ha-icon>
+            <ha-icon data-key="hangup" icon="mdi:phone-hangup"></ha-icon>
+          </span>
         </div>
       </ha-card>
     `;
@@ -277,8 +254,6 @@ class sipDoorbell extends HTMLElement {
       });
 
       this.config.camera.player.setAttribute('muted', '');
-      this.config.camera.player.style.setProperty('--video-max-height', '100vh');
-
       this.element('#scene').replaceChildren(this.config.camera.player);
     }
 
@@ -293,17 +268,17 @@ class sipDoorbell extends HTMLElement {
     });
 
     if(window.sipDoorbell[this.config.worker]) {
-      this.element('#basis').classList.remove('loading');
+      this.element('#arena').classList.remove('loading');
 
       window.sipDoorbell[this.config.worker].on('newRTCSession', (rtc) => {
         const stream = (c) => {
           c.ontrack = (e) => {
             if(e.track.kind === 'audio') {
-              this.element('#audio').srcObject = e.streams[0];
+              this.element('#audio audio').srcObject = e.streams[0];
             }
 
             if(e.track.kind === 'video') {
-              this.element('#video').srcObject = e.streams[0];
+              this.element('#video video').srcObject = e.streams[0];
             }
           };
         };
@@ -321,8 +296,7 @@ class sipDoorbell extends HTMLElement {
               console.info('%cIncoming call accepted:' + ' ' + rtc.session.remote_identity, 'color: yellow;');
               this.incoming_call_accepted = true;
 
-              this.element('#audio').setAttribute('style', 'display: none;');
-              this.element('#video').setAttribute('style', 'display: block;');
+              this.element('#video').setAttribute('style', 'display: flex;');
               this.element('#scene').setAttribute('style', 'display: none;');
 
               this.element('[data-key="pickup"]').setAttribute('style', 'display: none;');
@@ -419,21 +393,8 @@ class sipDoorbell extends HTMLElement {
     this.factory('[data-key="hangup"]');
     this.config.access.forEach((d, i) => this.factory('[data-key="C' + i + '"]'));
 
-    this.element('#audio').removeAttribute('style');
     this.element('#video').removeAttribute('style');
     this.element('#scene').removeAttribute('style');
-  }
-
-  stretch() {
-    const b = this.element('#basis');
-    const a = this.element('#arena');
-
-    if(b && a) {
-      const d = b.getBoundingClientRect();
-
-      a.style.width = Math.max(0, (d.left > 0) ? Math.min(d.width, (window.innerWidth - d.left)) : Math.min(d.right, window.innerWidth)) + 'px';
-      a.style.height = Math.max(0, (d.top > 0) ? Math.min(d.height, (window.innerHeight - d.top)) : Math.min(d.bottom, window.innerHeight)) + 'px';
-    }
   }
 
   element(e) {
