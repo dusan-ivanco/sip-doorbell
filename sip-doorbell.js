@@ -61,16 +61,12 @@ class sipDoorbell extends HTMLElement {
 
       if(this.startup.content === false) {
         this.startup.content = true;
-        setTimeout(() => {
-          this.content();
-        }, 0);
+        this.content();
       }
 
       if(this.startup.control === false) {
         this.startup.control = true;
-        setTimeout(() => {
-          this.control();
-        }, 1000);
+        this.control();
       }
     });
 
@@ -138,8 +134,7 @@ class sipDoorbell extends HTMLElement {
           align-items: center;
           justify-content: center;
 
-          background: initial;
-          transition: background 0.5s ease;
+          background: black;
         }
 
         #audio {
@@ -187,35 +182,6 @@ class sipDoorbell extends HTMLElement {
           height: inherit;
         }
 
-        #arena.loading {
-          background: black;
-        }
-
-        #arena:not(.loading) #hello {
-          display: none;
-        }
-
-        #hello {
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          width: 50px;
-          height: 50px;
-          z-index: 10;
-
-          border: 5px solid #333333;
-          border-top: 5px solid #ffffff;
-          border-radius: 50%;
-
-          transform: translate(-50%, -50%);
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          0% { transform: translate(-50%, -50%) rotate(0deg); }
-          100% { transform: translate(-50%, -50%) rotate(360deg); }
-        }
-
         [data-key="pickup"] {
           display: none;
           background: green;
@@ -229,12 +195,10 @@ class sipDoorbell extends HTMLElement {
         ${this.config.access.map((d, i) => `[data-key="C${i}"] {display: none; background: blue;}`).join('')}
       </style>
 
-      <ha-card id="arena" class="loading">
-        <div id="hello"></div>
+      <ha-card id="arena">
         <div id="audio"><audio autoplay playsinline></audio></div>
         <div id="video"><video autoplay playsinline></video></div>
         <div id="scene"></div>
-
         <div id="panel">
           <span>
             ${this.config.access.map((d, i) => `<ha-icon data-key="C${i}" icon="${d.icon}"></ha-icon>`).join('')}
@@ -268,8 +232,6 @@ class sipDoorbell extends HTMLElement {
     });
 
     if(window.sipDoorbell[this.config.worker]) {
-      this.element('#arena').classList.remove('loading');
-
       window.sipDoorbell[this.config.worker].on('newRTCSession', (rtc) => {
         const stream = (c) => {
           c.ontrack = (e) => {
