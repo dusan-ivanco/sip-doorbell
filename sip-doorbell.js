@@ -59,15 +59,10 @@ class sipDoorbell extends HTMLElement {
     crypto.subtle.digest('SHA-1', new TextEncoder().encode(JSON.stringify(this.config.server.sip))).then((b) => {
       this.config.worker = Array.from(new Uint8Array(b)).map((d) => d.toString(16).padStart(2, '0')).join('');
 
-      if(this.startup.content === false) {
-        this.startup.content = true;
-        this.content();
-      }
-
-      if(this.startup.control === false) {
-        this.startup.control = true;
-        this.control();
-      }
+      this.content();
+      this.control();
+    }).catch(() => {
+      throw new Error('Worker Initialization Failed');
     });
 
     navigator.mediaDevices.getUserMedia({
@@ -76,7 +71,7 @@ class sipDoorbell extends HTMLElement {
     }).then((e) => {
       e.getTracks().forEach((t) => t.stop());
     }).catch(() => {
-      throw new Error('SIP Doorbel require audio/video permission');
+      throw new Error('Audio/Video Permission Failed');
     });
   }
 
@@ -90,6 +85,9 @@ class sipDoorbell extends HTMLElement {
   }
 
   content() {
+    if(this.startup.content) return;
+    this.startup.content = true;
+
     this.shadowRoot.innerHTML = `
       <style>
         ha-camera-stream {
@@ -211,6 +209,9 @@ class sipDoorbell extends HTMLElement {
   }
 
   control() {
+    if(this.startup.control) return;
+    this.startup.control = true;
+
     if(this.config.camera.entity) {
       this.config.camera.player = Object.assign(document.createElement('ha-camera-stream'), {
         hass:this._hass,
@@ -231,121 +232,119 @@ class sipDoorbell extends HTMLElement {
       password:this.config.server.sip.credential
     });
 
-    if(window.sipDoorbell[this.config.worker]) {
-      window.sipDoorbell[this.config.worker].on('newRTCSession', (rtc) => {
-        const stream = (c) => {
-          c.ontrack = (e) => {
-            if(e.track.kind === 'audio') {
-              this.element('#audio audio').srcObject = e.streams[0];
-            }
+    window.sipDoorbell[this.config.worker].on('newRTCSession', (rtc) => {
+      const stream = (c) => {
+        c.ontrack = (e) => {
+          if(e.track.kind === 'audio') {
+            this.element('#audio audio').srcObject = e.streams[0];
+          }
 
-            if(e.track.kind === 'video') {
-              this.element('#video video').srcObject = e.streams[0];
-            }
-          };
+          if(e.track.kind === 'video') {
+            this.element('#video video').srcObject = e.streams[0];
+          }
         };
+      };
 
-        if(rtc.session.direction === 'incoming') {
-          console.info('%cIncoming call acquired:' + ' ' + rtc.session.remote_identity, 'color: blue;');
-          this.incoming_call_accepted = false;
+      if(rtc.session.direction === 'incoming') {
+        console.info('%cIncoming call acquired:' + ' ' + rtc.session.remote_identity, 'color: blue;');
+        this.incoming_call_accepted = false;
 
-          this.element('[data-key="pickup"]').setAttribute('style', 'display: initial;');
-          this.element('[data-key="hangup"]').setAttribute('style', 'display: initial;');
-          this.config.access.forEach((d, i) => this.element('[data-key="C' + i + '"]').setAttribute('style', 'display: none;'));
+        this.element('[data-key="pickup"]').setAttribute('style', 'display: initial;');
+        this.element('[data-key="hangup"]').setAttribute('style', 'display: initial;');
+        this.config.access.forEach((d, i) => this.element('[data-key="C' + i + '"]').setAttribute('style', 'display: none;'));
 
-          rtc.session.on('accepted', () => {
-            if(this.incoming_call_accepted !== null) {
-              console.info('%cIncoming call accepted:' + ' ' + rtc.session.remote_identity, 'color: yellow;');
-              this.incoming_call_accepted = true;
+        rtc.session.on('accepted', () => {
+          if(this.incoming_call_accepted !== null) {
+            console.info('%cIncoming call accepted:' + ' ' + rtc.session.remote_identity, 'color: yellow;');
+            this.incoming_call_accepted = true;
 
-              this.element('#video').setAttribute('style', 'display: flex;');
-              this.element('#scene').setAttribute('style', 'display: none;');
+            this.element('#video').setAttribute('style', 'display: flex;');
+            this.element('#scene').setAttribute('style', 'display: none;');
 
-              this.element('[data-key="pickup"]').setAttribute('style', 'display: none;');
-              this.element('[data-key="hangup"]').setAttribute('style', 'display: initial;');
-              this.config.access.forEach((d, i) => this.element('[data-key="C' + i + '"]').setAttribute('style', 'display: initial;'));
-            }
-          });
+            this.element('[data-key="pickup"]').setAttribute('style', 'display: none;');
+            this.element('[data-key="hangup"]').setAttribute('style', 'display: initial;');
+            this.config.access.forEach((d, i) => this.element('[data-key="C' + i + '"]').setAttribute('style', 'display: initial;'));
+          }
+        });
 
-          this.element('[data-key="pickup"]').addEventListener('click', () => {
-            rtc.session.answer(this.config.server.opt);
-          });
+        this.element('[data-key="pickup"]').addEventListener('click', () => {
+          rtc.session.answer(this.config.server.opt);
+        });
 
-          this.element('[data-key="hangup"]').addEventListener('click', () => {
-            if(this.incoming_call_accepted) {
+        this.element('[data-key="hangup"]').addEventListener('click', () => {
+          if(this.incoming_call_accepted) {
+            rtc.session.terminate();
+          } else {
+            this.incoming_call_accepted = null;
+
+            rtc.session.on('accepted', () => {
               rtc.session.terminate();
-            } else {
-              this.incoming_call_accepted = null;
+            });
 
-              rtc.session.on('accepted', () => {
-                rtc.session.terminate();
-              });
+            rtc.session.answer(this.config.server.opt);
+          }
 
-              rtc.session.answer(this.config.server.opt);
-            }
-
-            if(this.config.return) {
-              this.dispatchEvent(new CustomEvent('hass-action', {
-                detail:{
-                  action:'tap',
-                  config:{
-                    tap_action:{
-                      action:'navigate',
-                      navigation_path:this.config.return
-                    }
-                  }
-                },
-                bubbles:true,
-                composed:true
-              }));
-            }
-          });
-        }
-
-        if(rtc.session.connection) {
-          stream(rtc.session.connection);
-        } else {
-          rtc.session.on('peerconnection', () => stream(rtc.session.connection));
-        }
-
-        rtc.session.on('ended', (e) => {
-          console.info('%cCall session ended:' + ' ' + e.cause, 'color: red;');
-          this.cleanup();
-        });
-
-        rtc.session.on('failed', (e) => {
-          console.info('%cCall session failed:' + ' ' + e.cause, 'color: red;');
-          this.cleanup();
-        });
-
-        this.config.access.forEach((d, i) => {
-          this.element('[data-key="C' + i + '"]').addEventListener('click', () => {
+          if(this.config.return) {
             this.dispatchEvent(new CustomEvent('hass-action', {
               detail:{
                 action:'tap',
-                config:d.click
+                config:{
+                  tap_action:{
+                    action:'navigate',
+                    navigation_path:this.config.return
+                  }
+                }
               },
               bubbles:true,
               composed:true
             }));
-          });
+          }
+        });
+      }
+
+      if(rtc.session.connection) {
+        stream(rtc.session.connection);
+      } else {
+        rtc.session.on('peerconnection', () => stream(rtc.session.connection));
+      }
+
+      rtc.session.on('ended', (e) => {
+        console.info('%cCall session ended:' + ' ' + e.cause, 'color: red;');
+        this.cleanup();
+      });
+
+      rtc.session.on('failed', (e) => {
+        console.info('%cCall session failed:' + ' ' + e.cause, 'color: red;');
+        this.cleanup();
+      });
+
+      this.config.access.forEach((d, i) => {
+        this.element('[data-key="C' + i + '"]').addEventListener('click', () => {
+          this.dispatchEvent(new CustomEvent('hass-action', {
+            detail:{
+              action:'tap',
+              config:d.click
+            },
+            bubbles:true,
+            composed:true
+          }));
         });
       });
+    });
 
-      window.sipDoorbell[this.config.worker].on('registered', () => {
-        console.info('%cSIP-DOORBELL ' + this.version + ' IS INSTALLED', 'color: green; font-weight: bold;');
-      });
+    window.sipDoorbell[this.config.worker].on('registered', () => {
+      console.info('%cSIP-DOORBELL ' + this.version + ' IS INSTALLED', 'color: green; font-weight: bold;');
+    });
 
-      window.sipDoorbell[this.config.worker].on('unregistered', () => {
-        console.info('%cSIP-DOORBELL ' + this.version + ' IS UNINSTALLED', 'color: yellow; font-weight: bold;');
-      });
+    window.sipDoorbell[this.config.worker].on('unregistered', () => {
+      console.info('%cSIP-DOORBELL ' + this.version + ' IS UNINSTALLED', 'color: yellow; font-weight: bold;');
+    });
 
-      window.sipDoorbell[this.config.worker].on('registrationFailed', () => {
-        console.info('%cSIP-DOORBELL ' + this.version + ' INSTALLATION FAILED', 'color: red; font-weight: bold;');
-      });
+    window.sipDoorbell[this.config.worker].on('registrationFailed', () => {
+      console.info('%cSIP-DOORBELL ' + this.version + ' INSTALLATION FAILED', 'color: red; font-weight: bold;');
+    });
 
-      window.sipDoorbell[this.config.worker].start();
-    }
+    window.sipDoorbell[this.config.worker].start();
 
     this.cleanup();
   }
