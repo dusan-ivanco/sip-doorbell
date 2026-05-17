@@ -1,4 +1,4 @@
-import '/hacsfiles/sip-doorbell/jssip.js';
+import JsSIP from '/hacsfiles/sip-doorbell/jssip.js';
 
 window.customCards = window.customCards || [];
 window.customCards.push({
