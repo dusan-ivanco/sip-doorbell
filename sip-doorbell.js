@@ -95,7 +95,7 @@ class sipDoorbell extends HTMLElement {
           height: inherit;
 
           --video-max-width: 100%;
-          --video-max-height: 100%;
+          --video-max-height: calc(100vh - var(--header-height) - var(--safe-area-inset-top));
         }
 
         ha-icon {
